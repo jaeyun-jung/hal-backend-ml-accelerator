@@ -549,7 +549,13 @@ ml_snpe_invoke (void *backend_private, const void *input_, void *output_)
     Snpe_IUserBuffer_SetBufferAddress (iub, output[i].data);
   }
 
-  Snpe_SNPE_ExecuteUserBuffers (snpe->snpe_h, snpe->inputMap_h, snpe->outputMap_h);
+  Snpe_ErrorCode_t execStatus = Snpe_SNPE_ExecuteUserBuffers (
+      snpe->snpe_h, snpe->inputMap_h, snpe->outputMap_h);
+  if (execStatus != SNPE_SUCCESS) {
+    g_critical ("[snpe backend] Failed to execute user buffers, error code: %d",
+        (int) execStatus);
+    return HAL_ML_ERROR_RUNTIME_ERROR;
+  }
 
   return HAL_ML_ERROR_NONE;
 }

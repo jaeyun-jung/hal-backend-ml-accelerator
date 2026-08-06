@@ -77,6 +77,38 @@ TEST_F(MLBackendTest, Snpe_inference) {
     EXPECT_EQ(HAL_ML_ERROR_NONE, ml_snpe_deinit(hal_data));
 }
 
+TEST_F(MLBackendTest, Snpe_inference_execute_fail) {
+    void* hal_data = nullptr;
+    GstTensorMemory input[NNS_TENSOR_MEMORY_MAX] = {0};
+    GstTensorMemory output[NNS_TENSOR_MEMORY_MAX] = {0};
+    GstTensorsInfo in_info = {0};
+    GstTensorsInfo out_info = {0};
+    TestGstTensorFilterProperties* test_config = get_test_config();
+    ASSERT_NE(test_config, nullptr) << "Test configuration not initialized";
+
+    ASSERT_EQ(HAL_ML_ERROR_NONE, ml_snpe_init(&hal_data));
+    ASSERT_EQ(HAL_ML_ERROR_NONE, ml_snpe_configure_instance(hal_data, &test_config->base));
+    ASSERT_EQ(HAL_ML_ERROR_NONE, ml_snpe_get_model_info(hal_data, GET_IN_OUT_INFO, &in_info, &out_info));
+    allocate_and_load_test_buffers(input, output, &in_info, &out_info, test_config);
+
+    // Corrupt the SNPE handle to force an execute failure
+    snpe_handle_s* snpe = (snpe_handle_s*) hal_data;
+    Snpe_SNPE_Handle_t saved_handle = snpe->snpe_h;
+    snpe->snpe_h = nullptr;
+
+    // Execute should now fail
+    EXPECT_EQ(HAL_ML_ERROR_RUNTIME_ERROR, ml_snpe_invoke(hal_data, input, output));
+
+    // Restore the handle for clean deinit
+    snpe->snpe_h = saved_handle;
+
+    free_test_buffers(input, output, &in_info, &out_info);
+    gst_tensors_info_free(&in_info);
+    gst_tensors_info_free(&out_info);
+
+    EXPECT_EQ(HAL_ML_ERROR_NONE, ml_snpe_deinit(hal_data));
+}
+
 // ===================================================================
 // Framework Info Tests
 // ===================================================================
