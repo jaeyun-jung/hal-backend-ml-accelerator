@@ -3,6 +3,7 @@
 #include <glib.h>
 
 #include "hal-backend-ml-util.h"
+#include "hal-backend-ml-log.h"
 
 void gst_tensor_info_init (GstTensorInfo * info)
 {
@@ -136,7 +137,7 @@ GstTensorInfo * gst_tensors_info_get_nth_info (GstTensorsInfo * info, guint inde
     return &info->extra[index - NNS_TENSOR_MEMORY_MAX];
   }
 
-  g_critical ("Failed to get the information, invalid index %u (max %d).",
+  ml_log_e ("Failed to get the information, invalid index %u (max %d).",
       index, NNS_TENSOR_SIZE_LIMIT);
   return NULL;
 }

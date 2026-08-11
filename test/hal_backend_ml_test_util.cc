@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <iostream>
 #include "hal-backend-ml-util.h"
+#include "hal-backend-ml-log.h"
 #include <hal-ml-interface.h>
 
 /* Global test configuration - accessed through getter/setter functions */
@@ -33,12 +34,12 @@ parse_json_file (char * json_path, TestGstTensorFilterProperties *prop)
 
   /* Input validation */
   if (!json_path) {
-    g_warning ("JSON file path is NULL");
+    ml_log_w ("JSON file path is NULL");
     return HAL_ML_ERROR_INVALID_PARAMETER;
   }
 
   if (!prop) {
-    g_warning ("TestGstTensorFilterProperties pointer is NULL");
+    ml_log_w ("TestGstTensorFilterProperties pointer is NULL");
     return HAL_ML_ERROR_INVALID_PARAMETER;
   }
 
@@ -76,13 +77,13 @@ parse_json_file (char * json_path, TestGstTensorFilterProperties *prop)
   /* Initialize parser */
   parser = json_parser_new ();
   if (!parser) {
-    g_warning ("Failed to create JSON parser");
+    ml_log_w ("Failed to create JSON parser");
     return HAL_ML_ERROR_RUNTIME_ERROR;
   }
 
   /* Load JSON file */
   if (!json_parser_load_from_file (parser, json_path, &error)) {
-    g_warning ("Failed to load JSON file: %s", error->message);
+    ml_log_w ("Failed to load JSON file: %s", error->message);
     ret = HAL_ML_ERROR_IO_ERROR;
     goto cleanup;
   }
@@ -90,7 +91,7 @@ parse_json_file (char * json_path, TestGstTensorFilterProperties *prop)
   /* Get root node */
   rootNode = json_parser_get_root (parser);
   if (!rootNode || JSON_NODE_TYPE (rootNode) != JSON_NODE_OBJECT) {
-    g_warning ("JSON root is not an object");
+    ml_log_w ("JSON root is not an object");
     ret = HAL_ML_ERROR_INVALID_PARAMETER;
     goto cleanup;
   }
@@ -98,7 +99,7 @@ parse_json_file (char * json_path, TestGstTensorFilterProperties *prop)
   /* Get root object */
   rootObject = json_node_get_object (rootNode);
   if (!rootObject) {
-    g_warning ("Failed to get JSON object from root node");
+    ml_log_w ("Failed to get JSON object from root node");
     ret = HAL_ML_ERROR_INVALID_PARAMETER;
     goto cleanup;
   }
@@ -106,7 +107,7 @@ parse_json_file (char * json_path, TestGstTensorFilterProperties *prop)
   /* Get metadata object */
   metadata = json_object_get_object_member (rootObject, "metadata");
   if (!metadata) {
-    g_warning ("'metadata' object not found in JSON");
+    ml_log_w ("'metadata' object not found in JSON");
     ret = HAL_ML_ERROR_INVALID_PARAMETER;
     goto cleanup;
   }
@@ -114,7 +115,7 @@ parse_json_file (char * json_path, TestGstTensorFilterProperties *prop)
   /* Get configParameters array */
   configParametersArray = json_object_get_array_member (metadata, "configParameters");
   if (!configParametersArray) {
-    g_warning ("'configParameters' array not found in 'metadata'");
+    ml_log_w ("'configParameters' array not found in 'metadata'");
     ret = HAL_ML_ERROR_INVALID_PARAMETER;
     goto cleanup;
   }
@@ -126,13 +127,13 @@ parse_json_file (char * json_path, TestGstTensorFilterProperties *prop)
     configObject = NULL;
 
     if (!configNode || JSON_NODE_TYPE (configNode) != JSON_NODE_OBJECT) {
-      g_warning ("Invalid element at index %u in 'configParameters'", elem);
+      ml_log_w ("Invalid element at index %u in 'configParameters'", elem);
       continue;
     }
 
     configObject = json_node_get_object (configNode);
     if (!configObject) {
-      g_warning ("Failed to get object from element at index %u", elem);
+      ml_log_w ("Failed to get object from element at index %u", elem);
       continue;
     }
 
@@ -142,9 +143,9 @@ parse_json_file (char * json_path, TestGstTensorFilterProperties *prop)
       if (fwname) {
         g_free ((char *) prop->base.fwname);
         prop->base.fwname = g_strdup (fwname);
-        g_info ("fwname: %s", prop->base.fwname);
+        ml_log_i ("fwname: %s", prop->base.fwname);
       } else {
-        g_warning ("'fwname' is not a string");
+        ml_log_w ("'fwname' is not a string");
       }
     }
 
@@ -153,7 +154,7 @@ parse_json_file (char * json_path, TestGstTensorFilterProperties *prop)
 
     /* Parse 'num_models' (will be updated based on model_files array) */
     prop->base.num_models = json_object_get_int_member_with_default (configObject, "num_models", 0);
-    g_info ("num_models: %d", prop->base.num_models);
+    ml_log_i ("num_models: %d", prop->base.num_models);
 
     /* Parse 'model_files' array */
     JsonArray *model_files_array = json_object_get_array_member (configObject, "model_files");
@@ -168,15 +169,15 @@ parse_json_file (char * json_path, TestGstTensorFilterProperties *prop)
           const gchar *file_name = json_array_get_string_element (model_files_array, i);
           if (file_name) {
             prop->base.model_files[i] = g_strdup (file_name);
-            g_info ("Model file %u: %s", i, prop->base.model_files[i]);
+            ml_log_i ("Model file %u: %s", i, prop->base.model_files[i]);
           } else {
-            g_warning ("Failed to get model file name at index %u", i);
+            ml_log_w ("Failed to get model file name at index %u", i);
             prop->base.model_files[i] = NULL;
           }
         }
       }
     } else {
-      g_warning ("'model_files' array not found in configParameters");
+      ml_log_w ("'model_files' array not found in configParameters");
     }
 
     /* Parse 'input_configured' */
@@ -191,7 +192,7 @@ parse_json_file (char * json_path, TestGstTensorFilterProperties *prop)
       if (custom_properties) {
         g_free ((char *) prop->base.custom_properties);
         prop->base.custom_properties = g_strdup (custom_properties);
-        g_info ("Custom properties: %s", prop->base.custom_properties);
+        ml_log_i ("Custom properties: %s", prop->base.custom_properties);
       }
     }
 
@@ -208,9 +209,9 @@ parse_json_file (char * json_path, TestGstTensorFilterProperties *prop)
           const gchar *file_path = json_array_get_string_element (input_file_array, i);
           if (file_path) {
             prop->input_data_files[i] = g_strdup (file_path);
-            g_info ("Input data file %u: %s", i, prop->input_data_files[i]);
+            ml_log_i ("Input data file %u: %s", i, prop->input_data_files[i]);
           } else {
-            g_warning ("Failed to get input file path at index %u", i);
+            ml_log_w ("Failed to get input file path at index %u", i);
             prop->input_data_files[i] = NULL;
           }
         }

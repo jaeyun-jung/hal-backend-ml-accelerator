@@ -10,6 +10,7 @@
 #include <ovx/vsi_nn_pub.h>
 
 #include "hal-backend-ml-util.h"
+#include "hal-backend-ml-log.h"
 
 
 /**
@@ -86,7 +87,7 @@ vivante_vsi_type_from_string (const gchar *vsi_type_str)
   if (g_ascii_strcasecmp (vsi_type_str, "VSI_NN_TYPE_BOOL8") == 0)
     return VSI_NN_TYPE_BOOL8;
 
-  g_warning ("[vivante] Unknown VSI tensor type string from JSON: %s", vsi_type_str);
+  ml_log_w ("[vivante] Unknown VSI tensor type string from JSON: %s", vsi_type_str);
   return VSI_NN_TYPE_NONE;
 }
 
@@ -108,7 +109,7 @@ vivante_qnt_type_from_string (const gchar *qnt_str)
     return VSI_NN_QNT_TYPE_AFFINE_SYMMETRIC;
 
   /** @todo Add VSI_NN_QNT_TYPE_AFFINE_PERCHANNEL_ASYMMETRIC when available */
-  g_warning ("[vivante] Unknown VSI quantization type string from JSON: %s", qnt_str);
+  ml_log_w ("[vivante] Unknown VSI quantization type string from JSON: %s", qnt_str);
   return VSI_NN_QNT_TYPE_NONE;
 }
 
@@ -142,7 +143,7 @@ convert_to_tensor_type (vsi_nn_type_e vsi_type)
     case VSI_NN_TYPE_FLOAT64:
       return _NNS_FLOAT64;
     default:
-      g_warning ("[vivante] Unsupported vsi_nn_type_e: %d", vsi_type);
+      ml_log_w ("[vivante] Unsupported vsi_nn_type_e: %d", vsi_type);
       return _NNS_END;
   }
 }
@@ -162,12 +163,12 @@ _helper_parse_tensor_attributes (JsonObject *tensor_obj, vsi_nn_tensor_attr_t *v
   // Size and dim_num
   JsonArray *size_array = json_object_get_array_member (tensor_obj, "size");
   if (!size_array) {
-    g_critical ("[vivante] Tensor in JSON missing 'size' array.");
+    ml_log_e ("[vivante] Tensor in JSON missing 'size' array.");
     return HAL_ML_ERROR_INVALID_PARAMETER;
   }
   vsi_attr->dim_num = json_array_get_length (size_array);
   if (vsi_attr->dim_num == 0 || vsi_attr->dim_num > VSI_NN_MAX_DIM_NUM) {
-    g_critical ("[vivante] Invalid tensor 'dim_num': %u", vsi_attr->dim_num);
+    ml_log_e ("[vivante] Invalid tensor 'dim_num': %u", vsi_attr->dim_num);
     return HAL_ML_ERROR_INVALID_PARAMETER;
   }
   for (guint i = 0; i < vsi_attr->dim_num; ++i) {
@@ -177,14 +178,14 @@ _helper_parse_tensor_attributes (JsonObject *tensor_obj, vsi_nn_tensor_attr_t *v
   // Dtype object
   JsonObject *dtype_obj = json_object_get_object_member (tensor_obj, "dtype");
   if (!dtype_obj) {
-    g_critical ("[vivante] Tensor in JSON missing 'dtype' object.");
+    ml_log_e ("[vivante] Tensor in JSON missing 'dtype' object.");
     return HAL_ML_ERROR_INVALID_PARAMETER;
   }
 
   // Required: vx_type
   const gchar *vx_type_str = json_object_get_string_member (dtype_obj, "vx_type");
   if (!vx_type_str) {
-    g_critical ("[vivante] 'dtype' missing required 'vx_type' key.");
+    ml_log_e ("[vivante] 'dtype' missing required 'vx_type' key.");
     return HAL_ML_ERROR_INVALID_PARAMETER;
   }
   vsi_attr->dtype.vx_type = vivante_vsi_type_from_string (vx_type_str);
@@ -234,12 +235,12 @@ _json_create_neural_network (vivante_handle_s *self)
 
   self->ctx = vsi_nn_CreateContext ();
   if (!self->ctx) {
-    g_critical ("[vivante] Failed to create VSI context.");
+    ml_log_e ("[vivante] Failed to create VSI context.");
     goto cleanup;
   }
 
   if (!g_file_get_contents (self->json_path, &json_string, NULL, &err)) {
-    g_critical ("[vivante] Failed to read JSON file '%s': %s", self->json_path,
+    ml_log_e ("[vivante] Failed to read JSON file '%s': %s", self->json_path,
         err ? err->message : "Unknown error");
     ret = HAL_ML_ERROR_IO_ERROR;
     goto cleanup;
@@ -247,14 +248,14 @@ _json_create_neural_network (vivante_handle_s *self)
 
   parser = json_parser_new ();
   if (!json_parser_load_from_data (parser, json_string, -1, &err)) {
-    g_critical ("[vivante] Failed to parse JSON: %s", err ? err->message : "Unknown error");
+    ml_log_e ("[vivante] Failed to parse JSON: %s", err ? err->message : "Unknown error");
     ret = HAL_ML_ERROR_INVALID_PARAMETER;
     goto cleanup;
   }
 
   root_node = json_parser_get_root (parser);
   if (!root_node || !JSON_NODE_HOLDS_OBJECT (root_node)) {
-    g_critical ("[vivante] JSON root is not a valid object.");
+    ml_log_e ("[vivante] JSON root is not a valid object.");
     ret = HAL_ML_ERROR_INVALID_PARAMETER;
     goto cleanup;
   }
@@ -263,7 +264,7 @@ _json_create_neural_network (vivante_handle_s *self)
   input_array = json_object_get_array_member (root_obj, "input_tensors");
   output_array = json_object_get_array_member (root_obj, "output_tensors");
   if (!input_array || !output_array) {
-    g_critical ("[vivante] JSON must contain 'input_tensors' and 'output_tensors' arrays.");
+    ml_log_e ("[vivante] JSON must contain 'input_tensors' and 'output_tensors' arrays.");
     ret = HAL_ML_ERROR_INVALID_PARAMETER;
     goto cleanup;
   }
@@ -277,20 +278,20 @@ _json_create_neural_network (vivante_handle_s *self)
   self->graph = vsi_nn_CreateGraph (self->ctx,
       normal_tensors_num + virtual_tensors_num + const_tensors_num, node_num);
   if (!self->graph) {
-    g_critical ("[vivante] Failed to create VSI graph.");
+    ml_log_e ("[vivante] Failed to create VSI graph.");
     goto cleanup;
   }
 
   if (!vsi_nn_SetGraphInputs (self->graph, NULL, input_tensors_num)
       || !vsi_nn_SetGraphOutputs (self->graph, NULL, output_tensors_num)) {
-    g_critical ("[vivante] Failed to set graph inputs/outputs.");
+    ml_log_e ("[vivante] Failed to set graph inputs/outputs.");
     goto cleanup;
   }
 
   node = vsi_nn_AddNode (
       self->graph, VSI_NN_OP_NBG, input_tensors_num, output_tensors_num, NULL);
   if (!node) {
-    g_critical ("[vivante] Failed to add NBG node to graph.");
+    ml_log_e ("[vivante] Failed to add NBG node to graph.");
     goto cleanup;
   }
   node->uid = 0;
@@ -304,7 +305,7 @@ _json_create_neural_network (vivante_handle_s *self)
     // parse attr data from json
     JsonObject *tensor_obj = json_array_get_object_element (input_array, i);
     if (_helper_parse_tensor_attributes (tensor_obj, &tensor_attr) != HAL_ML_ERROR_NONE) {
-      g_critical ("[vivante] Failed to parse tensor attributes from JSON");
+      ml_log_e ("[vivante] Failed to parse tensor attributes from JSON");
       goto cleanup;
     }
 
@@ -312,17 +313,17 @@ _json_create_neural_network (vivante_handle_s *self)
     vsi_nn_tensor_id_t vsi_input_id
         = vsi_nn_AddTensor (self->graph, VSI_NN_TENSOR_ID_AUTO, &tensor_attr, NULL);
     if (vsi_input_id == VSI_NN_TENSOR_ID_NA) {
-      g_critical ("[vivante] Failed to add input tensor #%u", i);
+      ml_log_e ("[vivante] Failed to add input tensor #%u", i);
       goto cleanup;
     }
 
-    g_info ("[vivante] Added input tensor #%u with id %u", i, vsi_input_id);
+    ml_log_i ("[vivante] Added input tensor #%u with id %u", i, vsi_input_id);
     node->input.tensors[i] = vsi_input_id;
     self->graph->input.tensors[i] = vsi_input_id;
   }
 
   for (guint i = 0; i < input_tensors_num; ++i) {
-    g_info ("[vivante] Print input tensor #%u (%u):", i, self->graph->input.tensors[i]);
+    ml_log_i ("[vivante] Print input tensor #%u (%u):", i, self->graph->input.tensors[i]);
     vsi_nn_tensor_t *tensor
         = vsi_nn_GetTensor (self->graph, self->graph->input.tensors[i]);
     vsi_nn_PrintTensor (tensor, self->graph->input.tensors[i]);
@@ -335,7 +336,7 @@ _json_create_neural_network (vivante_handle_s *self)
     // parse attr data from json
     JsonObject *tensor_obj = json_array_get_object_element (output_array, i);
     if (_helper_parse_tensor_attributes (tensor_obj, &tensor_attr) != HAL_ML_ERROR_NONE) {
-      g_critical ("[vivante] Failed to parse tensor attributes from JSON");
+      ml_log_e ("[vivante] Failed to parse tensor attributes from JSON");
       goto cleanup;
     }
 
@@ -343,17 +344,17 @@ _json_create_neural_network (vivante_handle_s *self)
     vsi_nn_tensor_id_t vsi_output_id
         = vsi_nn_AddTensor (self->graph, VSI_NN_TENSOR_ID_AUTO, &tensor_attr, NULL);
     if (vsi_output_id == VSI_NN_TENSOR_ID_NA) {
-      g_critical ("[vivante] Failed to add output tensor #%u", i);
+      ml_log_e ("[vivante] Failed to add output tensor #%u", i);
       goto cleanup;
     }
 
-    g_info ("[vivante] Added output tensor #%u with id %u", i, vsi_output_id);
+    ml_log_i ("[vivante] Added output tensor #%u with id %u", i, vsi_output_id);
     node->output.tensors[i] = vsi_output_id;
     self->graph->output.tensors[i] = vsi_output_id;
   }
 
   for (guint i = 0; i < output_tensors_num; ++i) {
-    g_info ("[vivante] Print output tensor #%u (%u):", i, self->graph->output.tensors[i]);
+    ml_log_i ("[vivante] Print output tensor #%u (%u):", i, self->graph->output.tensors[i]);
     vsi_nn_tensor_t *tensor
         = vsi_nn_GetTensor (self->graph, self->graph->output.tensors[i]);
     vsi_nn_PrintTensor (tensor, self->graph->output.tensors[i]);
@@ -361,7 +362,7 @@ _json_create_neural_network (vivante_handle_s *self)
 
   // setup graph
   if (vsi_nn_SetupGraph (self->graph, FALSE) != VSI_SUCCESS) {
-    g_critical ("[vivante] Failed to setup VSI graph.");
+    ml_log_e ("[vivante] Failed to setup VSI graph.");
     goto cleanup;
   }
 
@@ -402,7 +403,7 @@ _so_create_neural_network (vivante_handle_s *self)
 {
   self->dl_handle = dlopen (self->so_path, RTLD_NOW);
   if (!self->dl_handle) {
-    g_critical ("[vivante] Failed to load shared library '%s': %s",
+    ml_log_e ("[vivante] Failed to load shared library '%s': %s",
         self->so_path, dlerror ());
     return HAL_ML_ERROR_RUNTIME_ERROR;
   }
@@ -414,7 +415,7 @@ _so_create_neural_network (vivante_handle_s *self)
 
   if (!self->model_specific_vnn_CreateNeuralNetwork
       || !self->model_specific_vnn_ReleaseNeuralNetwork) {
-    g_critical ("[vivante] Could not find required symbols in '%s'", self->so_path);
+    ml_log_e ("[vivante] Could not find required symbols in '%s'", self->so_path);
     dlclose (self->dl_handle);
     self->dl_handle = NULL;
     return HAL_ML_ERROR_RUNTIME_ERROR;
@@ -424,14 +425,14 @@ _so_create_neural_network (vivante_handle_s *self)
     self->model_specific_vnn_PostProcessNeuralNetwork = (vsi_status (*) (
         vsi_nn_graph_t *)) dlsym (self->dl_handle, "vnn_PostProcessNeuralNetwork");
     if (!self->model_specific_vnn_PostProcessNeuralNetwork) {
-      g_warning ("[vivante] 'postProcess' was requested, but symbol 'vnn_PostProcessNeuralNetwork' not found.");
+      ml_log_w ("[vivante] 'postProcess' was requested, but symbol 'vnn_PostProcessNeuralNetwork' not found.");
       self->has_post_process = FALSE;
     }
   }
 
   self->graph = self->model_specific_vnn_CreateNeuralNetwork (self->model_path);
   if (!self->graph) {
-    g_critical ("[vivante] vnn_CreateNeuralNetwork failed for model '%s'", self->model_path);
+    ml_log_e ("[vivante] vnn_CreateNeuralNetwork failed for model '%s'", self->model_path);
     return HAL_ML_ERROR_RUNTIME_ERROR;
   }
 
@@ -484,44 +485,53 @@ _clear_vivante_handle (vivante_handle_s *vivante)
 static int
 ml_vivante_init (void **backend_private)
 {
+  ml_log_i ("[vivante] Initialise Vivante handle");
+
   vivante_handle_s *vivante = g_new0 (vivante_handle_s, 1);
 
   _init_vivante_handle (vivante);
 
   *backend_private = vivante;
+
+  ml_log_i ("[vivante] Initialised Vivante handle successfully");
   return HAL_ML_ERROR_NONE;
 }
 
 static int
 ml_vivante_deinit (void *backend_private)
 {
+  ml_log_i ("[vivante] Deinitialise Vivante handle");
+
   vivante_handle_s *vivante = (vivante_handle_s *) backend_private;
 
   if (!vivante) {
-    g_critical ("[vivante] invalid backend_private");
+    ml_log_e ("[vivante] invalid backend_private");
     return HAL_ML_ERROR_INVALID_PARAMETER;
   }
 
   _clear_vivante_handle (vivante);
   g_free (vivante);
 
+  ml_log_i ("[vivante] Deinitialised Vivante handle successfully");
   return HAL_ML_ERROR_NONE;
 }
 
 static int
 ml_vivante_configure_instance (void *backend_private, const void *prop_)
 {
+  ml_log_i ("[vivante] Configure Vivante instance");
+
   const GstTensorFilterProperties *prop = (const GstTensorFilterProperties *) prop_;
   vivante_handle_s *vivante = (vivante_handle_s *) backend_private;
   gboolean _convert_output_fp32 = FALSE;
 
   if (!vivante || !prop) {
-    g_critical ("[vivante] invalid backend_private");
+    ml_log_e ("[vivante] invalid backend_private");
     return HAL_ML_ERROR_INVALID_PARAMETER;
   }
 
   if (vivante->model_path) {
-    g_critical ("[vivante] invalid state, clear old data.");
+    ml_log_e ("[vivante] invalid state, clear old data.");
     _clear_vivante_handle (vivante);
   }
 
@@ -545,18 +555,18 @@ ml_vivante_configure_instance (void *backend_private, const void *prop_)
         if (g_ascii_strcasecmp (option[0], "json") == 0) {
           vivante->use_json_for_graph = TRUE;
           vivante->json_path = g_strdup (option[1]);
-          g_info ("[vivante] Using JSON for graph setup: %s", vivante->json_path);
+          ml_log_i ("[vivante] Using JSON for graph setup: %s", vivante->json_path);
         } else if (g_ascii_strcasecmp (option[0], "OutputType") == 0) {
           /* @todo let each output tensor has different outputtype */
           gchar *type = option[1];
           if (g_ascii_strcasecmp (type, "FLOAT32") == 0 || g_ascii_strcasecmp (type, "FP32") == 0) {
-            g_info ("[vivante] Convert output to fp32!");
+            ml_log_i ("[vivante] Convert output to fp32!");
             _convert_output_fp32 = TRUE;
           } else {
-            g_warning ("Ignore unsupported output type (%s)", option[1]);
+            ml_log_w ("Ignore unsupported output type (%s)", option[1]);
           }
         } else {
-          g_warning ("Unknown option (%s).", options[op]);
+          ml_log_w ("Unknown option (%s).", options[op]);
         }
       }
 
@@ -569,25 +579,25 @@ ml_vivante_configure_instance (void *backend_private, const void *prop_)
   /* Load model based on the determined strategy JSON vs so */
   if (vivante->use_json_for_graph) {
     if (!vivante->json_path || !g_file_test (vivante->json_path, G_FILE_TEST_IS_REGULAR)) {
-      g_critical ("[vivante] JSON loading was selected, but no JSON path was provided via 'json:' custom property.");
+      ml_log_e ("[vivante] JSON loading was selected, but no JSON path was provided via 'json:' custom property.");
       return HAL_ML_ERROR_INVALID_PARAMETER;
     }
 
     int status = _json_create_neural_network (vivante);
     if (status != HAL_ML_ERROR_NONE) {
-      g_critical ("[vivante] Failed to create VSI graph.");
+      ml_log_e ("[vivante] Failed to create VSI graph.");
       return status;
     }
   } else {
     if (prop->num_models <= 1) {
-      g_critical ("[vivante] .so loading requires a second model file (the .so path).");
+      ml_log_e ("[vivante] .so loading requires a second model file (the .so path).");
       return HAL_ML_ERROR_INVALID_PARAMETER;
     }
     vivante->so_path = g_strdup (prop->model_files[1]);
 
     int status = _so_create_neural_network (vivante);
     if (status != HAL_ML_ERROR_NONE) {
-      g_critical ("[vivante] Failed to create VSI graph.");
+      ml_log_e ("[vivante] Failed to create VSI graph.");
       return status;
     }
   }
@@ -625,6 +635,7 @@ ml_vivante_configure_instance (void *backend_private, const void *prop_)
     }
   }
 
+  ml_log_i ("[vivante] Configured Vivante instance successfully");
   return HAL_ML_ERROR_NONE;
 }
 
@@ -636,7 +647,7 @@ ml_vivante_invoke (void *backend_private, const void *input_, void *output_)
   vivante_handle_s *vivante = (vivante_handle_s *) backend_private;
 
   if (!vivante) {
-    g_critical ("[vivante] invalid backend_private");
+    ml_log_e ("[vivante] invalid backend_private");
     return HAL_ML_ERROR_INVALID_PARAMETER;
   }
 
@@ -644,13 +655,13 @@ ml_vivante_invoke (void *backend_private, const void *input_, void *output_)
     vsi_nn_tensor_t *tensor
         = vsi_nn_GetTensor (vivante->graph, vivante->graph->input.tensors[i]);
     if (vsi_nn_CopyDataToTensor (vivante->graph, tensor, (uint8_t *) input[i].data) != VSI_SUCCESS) {
-      g_critical ("[vivante] Failed to copy data to tensor");
+      ml_log_e ("[vivante] Failed to copy data to tensor");
       return HAL_ML_ERROR_RUNTIME_ERROR;
     }
   }
 
   if (vsi_nn_RunGraph (vivante->graph) != VSI_SUCCESS) {
-    g_critical ("[vivante] Failed to run graph");
+    ml_log_e ("[vivante] Failed to run graph");
     return HAL_ML_ERROR_RUNTIME_ERROR;
   }
 
@@ -665,7 +676,7 @@ ml_vivante_invoke (void *backend_private, const void *input_, void *output_)
     if (vivante->convert_output_fp32) {
       float *fp32_data = vsi_nn_ConvertTensorToFloat32Data (vivante->graph, out_tensor);
       if (fp32_data == NULL) {
-        g_critical ("[vivante] Failed to convert output tensor to FP32.");
+        ml_log_e ("[vivante] Failed to convert output tensor to FP32.");
         return HAL_ML_ERROR_RUNTIME_ERROR;
       }
 
@@ -684,6 +695,8 @@ ml_vivante_invoke (void *backend_private, const void *input_, void *output_)
 static int
 ml_vivante_get_framework_info (void *backend_private, void *fw_info)
 {
+  ml_log_i ("[vivante] Get Vivante framework info");
+
   GstTensorFilterFrameworkInfo *info = (GstTensorFilterFrameworkInfo *) fw_info;
 
   info->name = "vivante";
@@ -692,12 +705,15 @@ ml_vivante_get_framework_info (void *backend_private, void *fw_info)
   info->run_without_model = FALSE;
   info->verify_model_path = FALSE;
 
+  ml_log_i ("[vivante] Got Vivante framework info successfully");
   return HAL_ML_ERROR_NONE;
 }
 
 static int
 ml_vivante_get_model_info (void *backend_private, int ops, void *in_info, void *out_info)
 {
+  ml_log_i ("[vivante] Get Vivante model info");
+
   vivante_handle_s *vivante = (vivante_handle_s *) backend_private;
   if (!vivante)
     return HAL_ML_ERROR_INVALID_PARAMETER;
@@ -705,12 +721,16 @@ ml_vivante_get_model_info (void *backend_private, int ops, void *in_info, void *
   gst_tensors_info_copy ((GstTensorsInfo *) in_info, &vivante->inputInfo);
   gst_tensors_info_copy ((GstTensorsInfo *) out_info, &vivante->outputInfo);
 
+  ml_log_i ("[vivante] Got Vivante model info successfully");
   return HAL_ML_ERROR_NONE;
 }
 
 static int
 ml_vivante_event_handler (void *backend_private, int ops, void *data)
 {
+  ml_log_i ("[vivante] Handle Vivante event");
+
+  ml_log_i ("[vivante] Handled Vivante event");
   return HAL_ML_ERROR_NOT_SUPPORTED;
 }
 

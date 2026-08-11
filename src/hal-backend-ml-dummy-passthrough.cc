@@ -7,6 +7,7 @@
 #include <hal-ml-interface.h>
 
 #include "hal-backend-ml-util.h"
+#include "hal-backend-ml-log.h"
 
 
 typedef struct _pass_handle_s {
@@ -30,7 +31,7 @@ ml_dummy_passthrough_deinit (void *backend_private)
 {
   pass_handle_s *pass = (pass_handle_s *) backend_private;
   if (!pass) {
-    g_critical ("[dummy backend] ml_dummy_passthrough_deinit called with invalid backend_private");
+    ml_log_e ("[dummy backend] ml_dummy_passthrough_deinit called with invalid backend_private");
     return HAL_ML_ERROR_INVALID_PARAMETER;
   }
 
@@ -48,7 +49,7 @@ ml_dummy_passthrough_configure_instance (void *backend_private, const void *prop
   const GstTensorFilterProperties *prop = (const GstTensorFilterProperties *) prop_;
   pass_handle_s *pass = (pass_handle_s *) backend_private;
   if (!pass) {
-    g_critical ("[dummy backend] ml_dummy_passthrough_configure_instance called with invalid backend_private");
+    ml_log_e ("[dummy backend] ml_dummy_passthrough_configure_instance called with invalid backend_private");
     return HAL_ML_ERROR_INVALID_PARAMETER;
   }
 
@@ -78,7 +79,7 @@ ml_dummy_passthrough_invoke (void *backend_private, const void *input_, void *ou
   GstTensorMemory *output = (GstTensorMemory *) output_;
   pass_handle_s *pass = (pass_handle_s *) backend_private;
   if (!pass) {
-    g_critical ("[dummy backend] ml_dummy_passthrough_invoke called with invalid backend_private");
+    ml_log_e ("[dummy backend] ml_dummy_passthrough_invoke called with invalid backend_private");
     return HAL_ML_ERROR_INVALID_PARAMETER;
   }
 
@@ -99,7 +100,7 @@ ml_dummy_passthrough_get_model_info (
   GstTensorsInfo *out_info = (GstTensorsInfo *) out_info_;
   pass_handle_s *pass = (pass_handle_s *) backend_private;
   if (!pass) {
-    g_critical ("[dummy backend] ml_dummy_passthrough_get_model_info called with invalid backend_private");
+    ml_log_e ("[dummy backend] ml_dummy_passthrough_get_model_info called with invalid backend_private");
     return HAL_ML_ERROR_INVALID_PARAMETER;
   }
 

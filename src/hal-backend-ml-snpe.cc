@@ -20,6 +20,7 @@
 #include <SNPE/SNPEUtil.h>
 
 #include "hal-backend-ml-util.h"
+#include "hal-backend-ml-log.h"
 
 
 struct snpe_handle_s {
@@ -100,7 +101,7 @@ set_environment_var_adsp ()
 
   std::string envPath;
 
-  g_info ("Checking for ADSP_LIBRARY_PATH configuration file: %s", iniFilePath.c_str ());
+  ml_log_i ("[snpe] Checking for ADSP_LIBRARY_PATH configuration file: %s", iniFilePath.c_str ());
 
   std::ifstream iniFile (iniFilePath);
 
@@ -115,53 +116,62 @@ set_environment_var_adsp ()
   // If the path was not successfully read from the file, use the default.
   if (envPath.empty ()) {
     envPath = defaultPath;
-    g_info ("Using default ADSP_LIBRARY_PATH");
+    ml_log_i ("[snpe] Using default ADSP_LIBRARY_PATH");
   }
 
   // Set the environment variable.
   g_setenv (envVarName, envPath.c_str (), TRUE);
-  g_info ("Set %s=%s", envVarName, g_getenv (envVarName));
+  ml_log_i ("[snpe] Set %s=%s", envVarName, g_getenv (envVarName));
 }
 
 static int
 ml_snpe_init (void **backend_private)
 {
+  ml_log_i ("[snpe] Initialise SNPE handle");
+
   snpe_handle_s *snpe = new snpe_handle_s ();
 
   set_environment_var_adsp ();
 
   *backend_private = snpe;
+
+  ml_log_i ("[snpe] Initialised SNPE handle successfully");
   return HAL_ML_ERROR_NONE;
 }
 
 static int
 ml_snpe_deinit (void *backend_private)
 {
+  ml_log_i ("[snpe] Deinitialise SNPE handle");
+
   snpe_handle_s *snpe = (snpe_handle_s *) backend_private;
 
   if (!snpe) {
-    g_critical ("[snpe backend] ml_snpe_deinit called with invalid backend_private");
+    ml_log_e ("[snpe] ml_snpe_deinit called with invalid backend_private");
     return HAL_ML_ERROR_INVALID_PARAMETER;
   }
 
   delete snpe;
 
+  ml_log_i ("[snpe] Deinitialised SNPE handle successfully");
   return HAL_ML_ERROR_NONE;
 }
 
 static int
 ml_snpe_configure_instance (void *backend_private, const void *prop_)
 {
+  ml_log_i ("[snpe] Configure SNPE instance");
+
   const GstTensorFilterProperties *prop = (const GstTensorFilterProperties *) prop_;
   snpe_handle_s *snpe = (snpe_handle_s *) backend_private;
 
   if (!snpe || !prop) {
-    g_critical ("[snpe backend] ml_snpe_configure_instance called with invalid backend_private");
+    ml_log_e ("[snpe] ml_snpe_configure_instance called with invalid backend_private");
     return HAL_ML_ERROR_INVALID_PARAMETER;
   }
 
   if (snpe->model_path) {
-    g_critical ("[snpe backend] invalid state, clear old data.");
+    ml_log_e ("[snpe] invalid state, clear old data.");
     snpe->clear ();
   }
 
@@ -308,7 +318,7 @@ ml_snpe_configure_instance (void *backend_private, const void *prop_)
                      || g_ascii_strcasecmp (option[1], "AIP") == 0) {
             runtime = SNPE_RUNTIME_AIP_FIXED8_TF;
           } else {
-            g_warning ("Unknown runtime (%s), set CPU as default.", options[op]);
+            ml_log_w ("[snpe] Unknown runtime (%s), set CPU as default.", options[op]);
           }
         } else if (g_ascii_strcasecmp (option[0], "OutputTensor") == 0) {
           /* the tensor name may contain ':' */
@@ -321,7 +331,7 @@ ml_snpe_configure_instance (void *backend_private, const void *prop_)
               throw std::invalid_argument ("Given tensor name is invalid.");
             }
 
-            g_info ("Add output tensor name of %s", names[i]);
+            ml_log_i ("[snpe] Add output tensor name of %s", names[i]);
             if (Snpe_StringList_Append (outputstrListHandle, names[i]) != SNPE_SUCCESS) {
               const std::string err_msg = "Failed to append output tensor name: "
                                           + (const std::string) names[i];
@@ -339,7 +349,7 @@ ml_snpe_configure_instance (void *backend_private, const void *prop_)
             } else if (g_ascii_strcasecmp (types[i], "TF8") == 0) {
               outputTypeVec.push_back (SNPE_USERBUFFERENCODING_ELEMENTTYPE_TF8);
             } else {
-              g_warning ("Ignore unknown output type (%s)", types[i]);
+              ml_log_w ("[snpe] Ignore unknown output type (%s)", types[i]);
             }
           }
           g_strfreev (types);
@@ -352,7 +362,7 @@ ml_snpe_configure_instance (void *backend_private, const void *prop_)
             } else if (g_ascii_strcasecmp (types[i], "TF8") == 0) {
               inputTypeVec.push_back (SNPE_USERBUFFERENCODING_ELEMENTTYPE_TF8);
             } else {
-              g_warning ("Ignore unknown input type (%s)", types[i]);
+              ml_log_w ("[snpe] Ignore unknown input type (%s)", types[i]);
             }
           }
           g_strfreev (types);
@@ -380,14 +390,14 @@ ml_snpe_configure_instance (void *backend_private, const void *prop_)
             perfProfile = SNPE_PERFORMANCE_PROFILE_EXTREME_POWER_SAVER;
           } else {
             _valid = false;
-            g_warning ("Unknown performance profile (%s), set BALANCED as default.",
+            ml_log_w ("[snpe] Unknown performance profile (%s), set BALANCED as default.",
                 options[op]);
           }
 
           if (_valid)
-            g_info ("Set performance profile to %s", option[1]);
+            ml_log_i ("[snpe] Set performance profile to %s", option[1]);
         } else {
-          g_warning ("Unknown option (%s).", options[op]);
+          ml_log_w ("[snpe] Unknown option (%s).", options[op]);
         }
       }
 
@@ -403,13 +413,13 @@ ml_snpe_configure_instance (void *backend_private, const void *prop_)
     if (!lib_version_h)
       throw std::runtime_error ("Failed to get SNPE library version");
 
-    g_info ("SNPE Version: %s", Snpe_DlVersion_ToString (lib_version_h));
+    ml_log_i ("[snpe] SNPE Version: %s", Snpe_DlVersion_ToString (lib_version_h));
 
     int32_t ver_major = Snpe_DlVersion_GetMajor (lib_version_h);
     if (ver_major < 2) {
       const std::string err_msg = "Invalid SNPE version, version 2.x is supported but has "
                                   + std::to_string (ver_major) + ".x.";
-      g_critical ("%s", err_msg.c_str ());
+      ml_log_e ("[snpe] %s", err_msg.c_str ());
       throw std::runtime_error (err_msg);
     }
 
@@ -421,7 +431,7 @@ ml_snpe_configure_instance (void *backend_private, const void *prop_)
     if (Snpe_Util_IsRuntimeAvailable (runtime) == 0)
       throw std::runtime_error ("Given runtime " + runtime_str + " is not available");
 
-    g_info ("Given runtime %s is available", runtime_str.c_str ());
+    ml_log_i ("[snpe] Given runtime %s is available", runtime_str.c_str ());
 
     /* set runtimelist config */
     runtime_list_h = Snpe_RuntimeList_Create ();
@@ -516,10 +526,11 @@ ml_snpe_configure_instance (void *backend_private, const void *prop_)
     _clean_handles ();
   } catch (const std::exception &e) {
     _clean_handles ();
-    g_critical ("%s", e.what ());
+    ml_log_e ("[snpe] %s", e.what ());
     return HAL_ML_ERROR_RUNTIME_ERROR;
   }
 
+  ml_log_i ("[snpe] Configured SNPE instance successfully");
   return HAL_ML_ERROR_NONE;
 }
 
@@ -531,7 +542,7 @@ ml_snpe_invoke (void *backend_private, const void *input_, void *output_)
   snpe_handle_s *snpe = (snpe_handle_s *) backend_private;
 
   if (!snpe) {
-    g_critical ("[snpe backend] ml_snpe_invoke called with invalid backend_private");
+    ml_log_e ("[snpe] ml_snpe_invoke called with invalid backend_private");
     return HAL_ML_ERROR_INVALID_PARAMETER;
   }
 
@@ -552,7 +563,7 @@ ml_snpe_invoke (void *backend_private, const void *input_, void *output_)
   Snpe_ErrorCode_t execStatus = Snpe_SNPE_ExecuteUserBuffers (
       snpe->snpe_h, snpe->inputMap_h, snpe->outputMap_h);
   if (execStatus != SNPE_SUCCESS) {
-    g_critical ("[snpe backend] Failed to execute user buffers, error code: %d",
+    ml_log_e ("[snpe] Failed to execute user buffers, error code: %d",
         (int) execStatus);
     return HAL_ML_ERROR_RUNTIME_ERROR;
   }
@@ -563,6 +574,8 @@ ml_snpe_invoke (void *backend_private, const void *input_, void *output_)
 static int
 ml_snpe_get_framework_info (void *backend_private, void *fw_info)
 {
+  ml_log_i ("[snpe] Get SNPE framework info");
+
   GstTensorFilterFrameworkInfo *info = (GstTensorFilterFrameworkInfo *) fw_info;
 
   info->name = "snpe";
@@ -571,19 +584,22 @@ ml_snpe_get_framework_info (void *backend_private, void *fw_info)
   info->run_without_model = FALSE;
   info->verify_model_path = FALSE;
 
+  ml_log_i ("[snpe] Got SNPE framework info successfully");
   return HAL_ML_ERROR_NONE;
 }
 
 static int
 ml_snpe_get_model_info (void *backend_private, int ops_, void *in_info_, void *out_info_)
 {
+  ml_log_i ("[snpe] Get SNPE model info");
+
   int ops = (model_info_ops) ops_;
   GstTensorsInfo *in_info = (GstTensorsInfo *) in_info_;
   GstTensorsInfo *out_info = (GstTensorsInfo *) out_info_;
   snpe_handle_s *snpe = (snpe_handle_s *) backend_private;
 
   if (!snpe) {
-    g_critical ("[snpe backend] ml_snpe_get_model_info called with invalid backend_private");
+    ml_log_e ("[snpe] ml_snpe_get_model_info called with invalid backend_private");
     return HAL_ML_ERROR_INVALID_PARAMETER;
   }
 
@@ -591,6 +607,7 @@ ml_snpe_get_model_info (void *backend_private, int ops_, void *in_info_, void *o
     gst_tensors_info_copy (in_info, &snpe->inputInfo);
     gst_tensors_info_copy (out_info, &snpe->outputInfo);
 
+    ml_log_i ("[snpe] Got SNPE model info successfully");
     return HAL_ML_ERROR_NONE;
   }
 
@@ -600,6 +617,9 @@ ml_snpe_get_model_info (void *backend_private, int ops_, void *in_info_, void *o
 static int
 ml_snpe_event_handler (void *backend_private, int ops_, void *data_)
 {
+  ml_log_i ("[snpe] Handle SNPE event");
+
+  ml_log_i ("[snpe] Handled SNPE event");
   return HAL_ML_ERROR_NOT_SUPPORTED;
 }
 
